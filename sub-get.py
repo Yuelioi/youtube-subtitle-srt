@@ -1,18 +1,16 @@
 import youtube_dl
 import re
 import requests
-def captions_get(url):
+def captions_get(url,lang = 'en'):
     # download subtitles
     ydl = youtube_dl.YoutubeDL({'writesubtitles': True, 'allsubtitles': True, 'writeautomaticsub': True})
-    
     # get subtitle info
     res = ydl.extract_info(url, download=False)
-    
-    # download English subtile (you can change to another language)
-    if res['requested_subtitles'] and res['requested_subtitles']['en']:
+    # download subtile (you can change to another language)
+    if res['requested_subtitles'] and res['requested_subtitles'][lang]:
         sub_url = res['requested_subtitles']['en']['url']
         print('Grabbing vtt file from ' + sub_url)
-        response = requests.get(res['requested_subtitles']['en']['url'], stream=True)
+        response = requests.get(res['requested_subtitles'][lang]['url'], stream=True)
         sub_text = response.text
         
         # judge sub type
@@ -23,41 +21,48 @@ def captions_get(url):
             sub_type = 'auto caption'
         return sub_text,sub_type
     else:
-        print('Youtube Video does not have any english captions')
-def vtt2srt(vtt_file):
-    pattern = r'<.*?>'
-    repl = ''
-    
-    # remove pos format
-    b = re.sub(pattern, repl, vtt_file).replace(' align:start position:0%','').replace('.',',')
-    c = b.split('\n')[12:]
-    sub = []
-    index = 0
-    
-    # youtube webvtt 8 lines get 1 real sub
-    for i in range(len(c)):
-        if i% 8 == 0:
-            sub.append(int((index + 1) /4))
-            sub.append(str(c[i]))
-            index += 2
-        elif i% 8 == 1:
-            sub.append(str(c[i]))
-
-        elif i% 8 == 2:
-            sub[index] = str(sub[index]) + ' ' + str((c[i]))
-            sub.append('\n')
-            index += 2
-        else:
-            pass
-    return sub
+        print('Np captions')
+def vtt2srt(vtt_file,sub_type):
+    '''
+    :param vtt_file: webvtt字幕或者用户上传字幕
+    :return: srt列表
+    '''
+        if sub_type == 'auto caption':
+        pattern = r'<.*?>'
+        repl = ''
+        no_POS = re.sub(pattern, repl, vtt_file).replace(' align:start position:0%', '')
+        CPTS = re.sub("(\d{2}:\d{2}:\d{2}).(\d{3})", lambda m: m.group(1) + ',' + m.group(2), no_POS).split('\n')[4:]
+        srt_list = []
+        index = 0
+        for i in range(len(CPTS)):
+            if i % 12 == 0:
+                srt_list.append(str(int((index + 1) / 4)))
+                srt_list.append('')
+                index += 2
+            elif i % 12 == 8:
+                s_c1 = CPTS[i - 8].find('-->')
+                startTime = CPTS[i - 8][0: s_c1 - 1]
+                s_c2 = CPTS[i].find('-->')
+                endTime = CPTS[i][s_c2 + 3:].strip()
+                print(startTime,endTime,srt_list,i)
+                srt_list[index - 1] = (str(startTime) + ' --> ' + str(endTime))
+                index += 1
+            elif i % 12 == 9:
+                srt_list.append(str(CPTS[i] + ' ' + CPTS[i + 1]).strip())
+                srt_list.append('')
+                index += 1
+            else:
+                pass
+        return srt_list[:-3]
+    else:
+        srt_list = re.sub("(\d{2}:\d{2}:\d{2}).(\d{3})", lambda m: m.group(1) + ',' + m.group(2), vtt_file).split('\n')[4:]
+    return srt_list
 
 if __name__ == '__main__':
-    CAPTIONS,sub_type = captions_get("https://www.youtube.com/watch?v=uDqjIdI4bF4")
-    if sub_type == 'auto caption':
-        # if sub is auto caption, convert to srt list
-        srt_content = vtt2srt(CAPTIONS)
-    else:
-        # if sub is manual caption, convert to srt list
-        srt_content = re.sub("(\d{2}:\d{2}:\d{2}).(\d{3})", lambda m: m.group(1) + ',' + m.group(2), CAPTIONS).split('\n')[4:]
-    print(srt_content)
+    url = 'https://www.youtube.com/watch?v=uDqjIdI4bF4'
+    vtt_file, sub_type = captions_get(url, 'en')
+    sub = vtt2srt(vtt_file, sub_type)
+    print(sub)
+
+
     
